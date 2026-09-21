@@ -108,21 +108,19 @@ class TestCardiacCareClinicalValidation(unittest.TestCase):
         self.assertTrue(any("Troponin" in item for item in score_result.missing_inputs))
 
     def test_10_deterministic_completeness_calculation(self):
-        """Phase 21 & 22: Completeness calculation must be exact, documented, and deterministic."""
+        """V3: Completeness calculation must be dynamic by active branch and deterministic."""
         state = ClinicalState()
         state.chest_pain = True
         state.pain_severity = 6
         state.pain_quality = "pressure"
         state.pain_radiation = ["left arm"]
         state.onset = "1 hour ago"
-        state.duration = "constant"
-        state.current = True
         state.worse_with_exertion = True
-        state.associated_symptoms = {"sweating": True}
-        state.cardiac_history = "No reported history"
         
         result = scoring_service.calculate_completeness(state.model_dump())
-        self.assertEqual(result.collected_fields_count, 10)
+        self.assertEqual(result.branch, "CHEST_PAIN")
+        self.assertEqual(result.total_required_fields, 5)
+        self.assertEqual(result.collected_fields_count, 5)
         self.assertEqual(result.completeness_percentage, 100.0)
 
     def test_11_differential_conditions_limit_and_status(self):

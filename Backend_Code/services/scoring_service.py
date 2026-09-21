@@ -15,6 +15,7 @@ class ValidatedScoreResult(BaseModel):
     calculated_at: float
 
 class CompletenessResult(BaseModel):
+    branch: str
     completeness_percentage: float
     total_required_fields: int
     collected_fields_count: int
@@ -26,105 +27,191 @@ class ScoringService:
     """
     Manages deterministic clinical calculations.
     Ensures zero fabricated risk scores and strictly separates
-    information completeness from diagnostic accuracy.
+    dynamic information completeness from diagnostic accuracy.
     """
 
-    CORE_CLINICAL_DIMENSIONS = [
-        "pain_presence",
-        "onset",
-        "duration",
-        "pain_severity",
-        "pain_quality",
-        "pain_radiation",
-        "associated_symptoms",
-        "provocation_or_relief",
-        "cardiac_or_medical_history",
-        "current_symptom_status"
-    ]
+    BRANCH_DIMENSIONS: Dict[str, List[str]] = {
+        "CHEST_PAIN": [
+            "onset_duration",
+            "pain_severity",
+            "pain_quality",
+            "pain_radiation",
+            "provocation_or_relief"
+        ],
+        "PALPITATIONS": [
+            "palpitation_character",
+            "onset_duration",
+            "associated_presyncope",
+            "provocation"
+        ],
+        "DYSPNEA": [
+            "dyspnea_timing",
+            "exertional_limits",
+            "orthopnea_or_pnd",
+            "chest_association"
+        ],
+        "SYNCOPE": [
+            "prodromal_symptoms",
+            "exertional_context",
+            "post_event_recovery",
+            "chest_or_rhythm_association"
+        ],
+        "GENERAL": [
+            "chief_complaint",
+            "onset_duration",
+            "severity_or_quality"
+        ]
+    }
 
     @classmethod
     def calculate_completeness(cls, clinical_state: Dict[str, Any]) -> CompletenessResult:
         """
-        Calculates the deterministic percentage of required clinical assessment
-        information collected so far.
+        Dynamically calculates the percentage of required clinical assessment
+        information collected so far for the active symptom branch.
         """
+        branch = clinical_state.get("current_branch", "GENERAL")
+        if branch == "GENERAL" or branch not in cls.BRANCH_DIMENSIONS:
+            if clinical_state.get("chest_pain"):
+                branch = "CHEST_PAIN"
+            elif clinical_state.get("palpitations") or (clinical_state.get("associated_symptoms") and clinical_state.get("associated_symptoms", {}).get("palpitations")):
+                branch = "PALPITATIONS"
+            elif clinical_state.get("dyspnea") or (clinical_state.get("associated_symptoms") and clinical_state.get("associated_symptoms", {}).get("shortness_of_breath")):
+                branch = "DYSPNEA"
+            elif clinical_state.get("syncope") or (clinical_state.get("associated_symptoms") and clinical_state.get("associated_symptoms", {}).get("syncope")):
+                branch = "SYNCOPE"
+            else:
+                branch = "GENERAL"
+
+        dimensions = cls.BRANCH_DIMENSIONS.get(branch, cls.BRANCH_DIMENSIONS["GENERAL"])
         collected: List[str] = []
         missing: List[str] = []
 
-        # 1. Pain presence
-        if "chest_pain" in clinical_state and clinical_state["chest_pain"] is not None:
-            collected.append("pain_presence")
-        else:
-            missing.append("pain_presence")
+        if branch == "CHEST_PAIN":
+            # 1. Onset or duration
+            if clinical_state.get("onset") or clinical_state.get("duration"):
+                collected.append("onset_duration")
+            else:
+                missing.append("onset_duration")
 
-        # 2. Onset
-        if clinical_state.get("onset"):
-            collected.append("onset")
-        else:
-            missing.append("onset")
+            # 2. Pain severity (0-10)
+            if clinical_state.get("pain_severity") is not None:
+                collected.append("pain_severity")
+            else:
+                missing.append("pain_severity")
 
-        # 3. Duration
-        if clinical_state.get("duration"):
-            collected.append("duration")
-        else:
-            missing.append("duration")
+            # 3. Pain quality
+            if clinical_state.get("pain_quality"):
+                collected.append("pain_quality")
+            else:
+                missing.append("pain_quality")
 
-        # 4. Severity (0-10)
-        if clinical_state.get("pain_severity") is not None:
-            collected.append("pain_severity")
-        else:
-            missing.append("pain_severity")
+            # 4. Pain radiation (explicit list, can be empty if denied)
+            if clinical_state.get("pain_radiation") is not None:
+                collected.append("pain_radiation")
+            else:
+                missing.append("pain_radiation")
 
-        # 5. Quality
-        if clinical_state.get("pain_quality"):
-            collected.append("pain_quality")
-        else:
-            missing.append("pain_quality")
+            # 5. Provocation or relief
+            if (clinical_state.get("worse_with_exertion") is not None or 
+                clinical_state.get("better_with_rest") is not None):
+                collected.append("provocation_or_relief")
+            else:
+                missing.append("provocation_or_relief")
 
-        # 6. Radiation
-        if "pain_radiation" in clinical_state and clinical_state["pain_radiation"] is not None:
-            collected.append("pain_radiation")
-        else:
-            missing.append("pain_radiation")
+        elif branch == "PALPITATIONS":
+            assoc = clinical_state.get("associated_symptoms", {})
+            if clinical_state.get("palpitation_character") or assoc.get("palpitations"):
+                collected.append("palpitation_character")
+            else:
+                missing.append("palpitation_character")
 
-        # 7. Associated symptoms
-        assoc = clinical_state.get("associated_symptoms")
-        if isinstance(assoc, dict) and len(assoc) > 0:
-            collected.append("associated_symptoms")
-        else:
-            missing.append("associated_symptoms")
+            if clinical_state.get("onset") or clinical_state.get("duration"):
+                collected.append("onset_duration")
+            else:
+                missing.append("onset_duration")
 
-        # 8. Provocation / relief
-        if clinical_state.get("worse_with_exertion") is not None or clinical_state.get("better_with_rest") is not None:
-            collected.append("provocation_or_relief")
-        else:
-            missing.append("provocation_or_relief")
+            if assoc.get("dizziness") is not None or assoc.get("syncope") is not None:
+                collected.append("associated_presyncope")
+            else:
+                missing.append("associated_presyncope")
 
-        # 9. Medical history / risk factors
-        hist = clinical_state.get("past_history") or clinical_state.get("cardiac_history")
-        rf = clinical_state.get("risk_factors")
-        if hist is not None or rf is not None:
-            collected.append("cardiac_or_medical_history")
-        else:
-            missing.append("cardiac_or_medical_history")
+            if clinical_state.get("worse_with_exertion") is not None:
+                collected.append("provocation")
+            else:
+                missing.append("provocation")
 
-        # 10. Current status
-        if "current" in clinical_state and clinical_state["current"] is not None:
-            collected.append("current_symptom_status")
-        else:
-            missing.append("current_symptom_status")
+        elif branch == "DYSPNEA":
+            assoc = clinical_state.get("associated_symptoms", {})
+            if assoc.get("shortness_of_breath"):
+                collected.append("dyspnea_timing")
+            else:
+                missing.append("dyspnea_timing")
 
-        total = len(cls.CORE_CLINICAL_DIMENSIONS)
+            if clinical_state.get("worse_with_exertion") is not None:
+                collected.append("exertional_limits")
+            else:
+                missing.append("exertional_limits")
+
+            if clinical_state.get("orthopnea") is not None:
+                collected.append("orthopnea_or_pnd")
+            else:
+                missing.append("orthopnea_or_pnd")
+
+            if clinical_state.get("chest_pain") is not None:
+                collected.append("chest_association")
+            else:
+                missing.append("chest_association")
+
+        elif branch == "SYNCOPE":
+            assoc = clinical_state.get("associated_symptoms", {})
+            if assoc.get("syncope") or assoc.get("dizziness"):
+                collected.append("prodromal_symptoms")
+            else:
+                missing.append("prodromal_symptoms")
+
+            if clinical_state.get("duration"):
+                collected.append("duration_unconsciousness")
+            else:
+                missing.append("duration_unconsciousness")
+
+            if clinical_state.get("worse_with_exertion") is not None:
+                collected.append("exertional_context")
+            else:
+                missing.append("exertional_context")
+
+            if clinical_state.get("chest_pain") is not None or assoc.get("palpitations") is not None:
+                collected.append("chest_or_rhythm_association")
+            else:
+                missing.append("chest_or_rhythm_association")
+
+        else: # GENERAL
+            if clinical_state.get("chief_complaint") or clinical_state.get("chest_pain"):
+                collected.append("chief_complaint")
+            else:
+                missing.append("chief_complaint")
+
+            if clinical_state.get("onset") or clinical_state.get("duration"):
+                collected.append("onset_duration")
+            else:
+                missing.append("onset_duration")
+
+            if clinical_state.get("pain_severity") is not None or clinical_state.get("pain_quality"):
+                collected.append("severity_or_quality")
+            else:
+                missing.append("severity_or_quality")
+
+        total = len(dimensions)
         count = len(collected)
-        pct = round((count / total) * 100.0, 1)
+        pct = round((count / total) * 100.0, 1) if total > 0 else 0.0
 
         return CompletenessResult(
+            branch=branch,
             completeness_percentage=pct,
             total_required_fields=total,
             collected_fields_count=count,
             collected_fields=collected,
             missing_fields=missing,
-            description=f"{count} of {total} core clinical assessment dimensions documented."
+            description=f"{count} of {total} {branch.replace('_', ' ').title()} core clinical assessment dimensions documented."
         )
 
     @classmethod
@@ -163,7 +250,6 @@ class ScoringService:
             )
 
         # In future hardware/lab integration, this calculates the authentic validated HEART score (0-10)
-        # History (0-2), ECG (0-2), Age (0-2), Risk factors (0-2), Troponin (0-2)
         score = 0
         if patient_age:
             if patient_age >= 65:

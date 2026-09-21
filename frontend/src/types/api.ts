@@ -103,9 +103,12 @@ export interface ReportData {
   critical_red_flags?: Record<string, string>;
   critical_red_flags_identified?: Record<string, string>;
 
-  // Summaries
+  // Summaries & Sparse Evidence
   doctor_clinical_summary_text?: string;
   patient_friendly_summary?: PatientFriendlySummary;
+  reported_symptoms?: string[];
+  reported_history?: string[];
+  what_would_change_assessment?: string[];
   prognosis_risk_statement?: string;
 
   // Quantitative Metrics (Deterministic)

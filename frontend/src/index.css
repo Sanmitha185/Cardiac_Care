@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans antialiased selection:bg-brand-500 selection:text-white;
+  }
+}
+
+/* Clinical grid pattern */
+.clinical-grid {
+  background-size: 32px 32px;
+  background-image: 
+    linear-gradient(to right, rgba(14, 135, 235, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(14, 135, 235, 0.04) 1px, transparent 1px);
+}
+
+.clinical-grid-dense {
+  background-size: 16px 16px;
+  background-image: 
+    linear-gradient(to right, rgba(14, 135, 235, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(14, 135, 235, 0.06) 1px, transparent 1px);
+}
+
+/* Glass card styling with subtle medical borders */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.glass-panel-dark {
+  background: rgba(10, 15, 29, 0.88);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(30, 58, 138, 0.25);
+}
+
+/* Print Styles for Clinical Reports */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 12pt;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .glass-panel {
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+  }
+
+  .page-break {
+    page-break-before: always;
+  }
+}
